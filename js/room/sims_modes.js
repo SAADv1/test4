@@ -10,29 +10,32 @@ const g = 9.8, TAU = Math.PI * 2;
 const ease = (t) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
 
 /** يضيف دعم «المشهد» لأي محاكاة: إخفاء أجزاء المشهد الأساسي وإظهار مجموعة المشهد الحالي */
-function withModes(Base) {
+export function withModes(Base, nBase = 1) {
   return class extends Base {
     constructor(ctx, defs) {
       super(ctx, defs);
-      this.discrete.add('mode'); this.baseParts = [...this.root.children]; this.groups = {}; this.curMode = -1;
+      this.discrete.add('mode'); this.baseParts = [...this.root.children]; this.groups = {}; this.curMode = -1; this.nBase = nBase;
     }
     get mode() { return Math.round(this.p.mode || 0); }
+    /** المشاهد الأصلية للمحاكاة (قبل إضافة المشاهد الجديدة) */
+    get isBase() { return this.mode < this.nBase; }
     group(m) { const gr = new THREE.Group(); gr.visible = false; this.root.add(gr); this.groups[m] = gr; return gr; }
     applyMode(keep = []) {
       const m = this.mode; if (m === this.curMode) return false;
-      if (this.curMode === 0 || this.curMode === -1) this.baseVis = this.baseParts.map((o) => o.visible);
+      if (this.curMode < this.nBase) this.baseVis = this.baseParts.map((o) => o.visible);
       this.curMode = m; this.clearTrails();
-      this.baseParts.forEach((o, i) => (o.visible = m === 0 ? this.baseVis[i] : keep.includes(o)));
+      const base = m < this.nBase;
+      this.baseParts.forEach((o, i) => (o.visible = base ? this.baseVis[i] : keep.includes(o)));
       Object.entries(this.groups).forEach(([k, gr]) => (gr.visible = +k === m));
       this.onModeEnter?.(m); return true;
     }
-    readout() { return this.mode === 0 || !this.modeReadout ? super.readout() : this.modeReadout(); }
-    graph() { return this.mode === 0 || !this.modeGraph ? super.graph() : this.modeGraph(); }
+    readout() { return this.isBase || !this.modeReadout ? super.readout() : this.modeReadout(); }
+    graph() { return this.isBase || !this.modeGraph ? super.graph() : this.modeGraph(); }
   };
 }
 
 /** لافتة نصية قابلة للتحديث */
-function liveLabel(parent, color = '#ffffff', size = 0.2) {
+export function liveLabel(parent, color = '#ffffff', size = 0.2) {
   const holder = new THREE.Group(); parent.add(holder); let last = '', at = 0;
   holder.setText = (t) => {
     const now = performance.now(); if (t === last || (last && now - at < 250)) return; last = t; at = now;
@@ -191,7 +194,7 @@ export class Collision extends withModes(CollisionBase) {
     const real = [this.v[0] / 0.35, this.v[1] / 0.35]; const pl = (p) => vlen(p, 10, 1.0);
     this.pa[0].set(V(this.x[0], 1.25, 0.2), V(pl(mA * real[0]), 0, 0)); this.pa[1].set(V(this.x[1], 1.55, 0.2), V(pl(mB * real[1]), 0, 0));
     this.pt.visible = false;
-    const k = 20; this.state = { pA: k * mA * real[0], pB: k * mB * real[1], tot: k * (mA * real[0] + mB * real[1]) };
+    const k = this.p.ks || 20; this.state = { pA: k * mA * real[0], pB: k * mB * real[1], tot: k * (mA * real[0] + mB * real[1]) };
   }
   modeReadout() {
     if (this.mode === 1) { const s = this.state || {}; return [['زخم الأول', plainNum(s.pA) + ' kg·m/s'], ['زخم الثاني', plainNum(s.pB) + ' kg·m/s'], ['الزخم الكلي', plainNum(s.tot) + ' (صفر قبل وبعد) ✓'], ['الأخف', 'يرتد بسرعة أكبر']]; }

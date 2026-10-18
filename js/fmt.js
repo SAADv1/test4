@@ -3,7 +3,7 @@ import katex from 'katex';
 
 const HELPERS = {
   sqrt: Math.sqrt, pow: Math.pow, sin: Math.sin, cos: Math.cos, abs: Math.abs, min: Math.min, max: Math.max,
-  cbrt: Math.cbrt, round: Math.round, PI: Math.PI, rad: (d) => (d * Math.PI) / 180, clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
+  cbrt: Math.cbrt, round: Math.round, atan: Math.atan, PI: Math.PI, rad: (d) => (d * Math.PI) / 180, clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
   G: 6.67e-11, g: 9.8, c: 3.0e8,
 };
 const fnCache = new Map();

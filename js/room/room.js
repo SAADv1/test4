@@ -8,9 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { makeMaterials, panelTexture, wrapText, latexPlain, rbox, lathe, mesh, FONT, Arrow } from './kit.js';
 import { WalkControls } from './controls.js';
 import { buildEnvironment } from './environments.js';
-import { Satellite, Disk, Torque, Seesaw } from './sims_a.js';
-import { Thermal, Phase } from './sims_b.js';
-import { Orbits, Impulse, Collision, Work, Lever, Forms, Ramp } from './sims_modes.js';
+import { Orbits, Satellite, Disk, Torque, Seesaw, Impulse, Collision, Work, Lever, Forms, Ramp, Thermal, Phase } from './sims_more.js';
 import { solve, texMap, fill, rich, tex, evalExpr, paramPlain, plainNum } from '../fmt.js';
 import { TEACHER } from '../config.js';
 
@@ -235,11 +233,26 @@ export class Room {
     });
   }
 
+  /** مواضع إضافية للأكشاك: منتصف كل كشكين متجاورين على الجدار نفسه (مع تجنّب اللوحات الجدارية) */
+  allSlots(n) {
+    const base = this.env.slots; if (n <= base.length) return base;
+    const out = [...base]; const S = this.stage; const plaques = this.env.plaques || [];
+    for (let i = 0; i < base.length && out.length < n; i++) for (let j = i + 1; j < base.length && out.length < n; j++) {
+      const a = base[i], b = base[j]; const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < 3.2 || d > 6.2) continue;
+      const c = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, ry: a.ry };
+      if (Math.abs(a.ry - b.ry) > 1e-3) c.ry = Math.atan2(S.x - c.x, S.z - c.z);
+      for (const p of plaques) if (Math.sign(p.x) === Math.sign(c.x) && Math.abs(p.z - c.z) < 1.2 && (p.y ?? 2) < 3.2) c.z += (c.z >= p.z ? 1 : -1) * (1.25 - Math.abs(p.z - c.z));
+      if (out.every((o) => Math.hypot(o.x - c.x, o.z - c.z) > 1.6)) out.push(c);
+    }
+    return out;
+  }
+
   buildExhibits() {
     const M = this.mats, col = this.color;
     const baseGeo = rbox(0.62, 1.0, 0.42, 0.08, 4), screenGeo = rbox(1.14, 0.82, 0.05, 0.03, 3), footGeo = lathe([[0, 0], [0.5, 0], [0.52, 0.02], [0.46, 0.05], [0, 0.05]], 48);
+    const slots = this.allSlots(this.L.exhibits.length);
     this.exhibitObjs = this.L.exhibits.map((ex, i) => {
-      const s = this.env.slots[i % this.env.slots.length];
+      const s = slots[i % slots.length];
       const grp = new THREE.Group(); grp.position.set(s.x, 0, s.z); grp.rotation.y = s.ry;
       const foot = mesh(footGeo, M.chrome);
       const base = mesh(baseGeo, M.graphite); base.position.y = 0.55;
@@ -341,12 +354,15 @@ export class Room {
 
   renderStage() {
     const sim = this.L.sim; const defs = sim.params;
+    const names = defs.mode?.names; const cur = Math.round(this.sim.p.mode || 0);
+    const shown = Object.entries(defs).filter(([k, d]) => (names ? k !== 'mode' : true) && (!d.modes || d.modes.includes(cur)));
+    const scenes = names ? `<section class="ip-sec"><h3>المشهد</h3><div class="scenes">${names.map((n, i) => `<button data-scene="${i}" class="${i === cur ? 'on' : ''}">${n}</button>`).join('')}</div></section>` : '';
     this.panel.innerHTML = `<div class="ip-grip" aria-hidden="true"></div>${this.panelHead('المحاكاة الرئيسية', sim.title, 'تحكّم مباشر')}
-      <p class="ip-statement">${sim.desc}</p>
-      <section class="ip-sec"><h3>معايير المحاكاة</h3><div class="sliders">${Object.entries(defs).map(([k, d]) => {
-        const step = (d.max - d.min) <= 1.01 ? 0.01 : (d.max - d.min) <= 20 ? 0.05 : 1;
-        return `<label class="sl"><span class="sl-top"><span>${d.label}</span><output data-o="${k}">${plainNum(d.value)} ${d.unit}</output></span>
-          <input type="range" min="${d.min}" max="${d.max}" step="${step}" value="${d.value}" data-k="${k}"></label>`; }).join('')}</div></section>
+      <p class="ip-statement">${sim.desc}</p>${scenes}
+      <section class="ip-sec"><h3>معايير المحاكاة</h3><div class="sliders">${shown.map(([k, d]) => {
+        const step = (d.max - d.min) <= 1.01 ? 0.01 : (d.max - d.min) <= 20 ? 0.05 : 1; const v = this.sim.target[k] ?? d.value;
+        return `<label class="sl"><span class="sl-top"><span>${d.label}</span><output data-o="${k}">${plainNum(v)} ${d.unit}</output></span>
+          <input type="range" min="${d.min}" max="${d.max}" step="${step}" value="${v}" data-k="${k}"></label>`; }).join('')}</div></section>
       <section class="ip-sec"><h3>دليل المتجهات</h3><ul class="legend big">${this.sim.legend.map(([c, l]) => `<li><i style="--k:${c}"></i>${l}</li>`).join('')}</ul></section>`;
     this.wirePanel();
     this.panel.querySelectorAll('input[type=range]').forEach((inp) => (inp.oninput = () => {
@@ -354,6 +370,7 @@ export class Room {
       this.panel.querySelector(`[data-o="${k}"]`).textContent = `${plainNum(+inp.value)} ${d.unit}`;
       this.sim.set({ [k]: +inp.value });
     }));
+    this.panel.querySelectorAll('[data-scene]').forEach((b) => (b.onclick = () => { this.sim.set({ mode: +b.dataset.scene }); const st = this.panel.scrollTop; this.renderStage(); this.renderLegend(); this.panel.scrollTop = st; }));
   }
 
   renderExhibit(ex) {
